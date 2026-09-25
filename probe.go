@@ -14,6 +14,7 @@ type ModuleState struct {
 	Kind  string
 	State data.State
 	Err   string // the module's health error; module errors never carry secrets
+	Note  string // a limit the module reports that is not an error
 }
 
 // Probe is what the app knows about itself. The app sets its parts; the module reads them.

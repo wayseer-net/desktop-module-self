@@ -58,6 +58,9 @@ func (m *Module) world() ([]model.Entity, []model.Edge) {
 			continue
 		}
 		attrs := map[string]model.Value{"kind": model.String(s.Kind), "freshness": model.String(s.State.String())}
+		if s.Note != "" {
+			attrs["note"] = model.String(s.Note)
+		}
 		ents = append(ents, m.entity(moduleRef(m.name, s.Name), KindModule, string(s.Name), moduleStatus(s), attrs))
 	}
 	slices.SortFunc(ents[1:], func(a, b model.Entity) int { return compareRefs(a.Ref, b.Ref) })

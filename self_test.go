@@ -231,14 +231,14 @@ func TestModulesBecomeEntitiesWithTheirFreshness(t *testing.T) {
 	p.SetModules(func() []ModuleState {
 		mu.Lock()
 		defer mu.Unlock()
-		return []ModuleState{{Name: "prom", Kind: "prometheus", State: state, Err: "connection refused"}}
+		return []ModuleState{{Name: "prom", Kind: "prometheus", State: state, Err: "connection refused", Note: "no journal"}}
 	})
 	_, sink := running(t, p, "interval: 10ms")
 	ref := moduleRef("mindseye", "prom")
 	eventually(t, "the prom entity", func() bool { _, ok := sink.entity(ref); return ok })
 	e, _ := sink.entity(ref)
-	if e.Status.Level != model.StatusCrit || e.Status.Reason != "connection refused" {
-		t.Errorf("status %+v", e.Status)
+	if e.Status.Level != model.StatusCrit || e.Status.Reason != "connection refused" || e.Attrs["note"].Str() != "no journal" {
+		t.Errorf("status %+v, attrs %v", e.Status, e.Attrs)
 	}
 	mu.Lock()
 	state = data.FreshLive
