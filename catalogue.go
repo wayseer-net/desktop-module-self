@@ -1,7 +1,6 @@
 package self
 
 import (
-	"mindseye/internal/data"
 	"mindseye/internal/model"
 	"mindseye/internal/module"
 )
@@ -40,33 +39,4 @@ func unitOf(metric string) (model.Unit, bool) {
 		}
 	}
 	return "", false
-}
-
-// history keeps the newest points of one series in a fixed ring.
-type history struct {
-	points []data.Point
-	total  int
-}
-
-func newHistory(n int) *history { return &history{points: make([]data.Point, n)} }
-
-// add appends p unless the clock went backwards, which would break the series' order.
-func (h *history) add(p data.Point) {
-	if h.total > 0 && p.T <= h.points[(h.total-1)%len(h.points)].T {
-		return
-	}
-	h.points[h.total%len(h.points)] = p
-	h.total++
-}
-
-// in returns the points inside w, oldest first.
-func (h *history) in(w data.TimeWindow) []data.Point {
-	n := len(h.points)
-	var out []data.Point
-	for i := h.total - min(h.total, n); i < h.total; i++ {
-		if p := h.points[i%n]; w.Contains(p.T) {
-			out = append(out, p)
-		}
-	}
-	return out
 }

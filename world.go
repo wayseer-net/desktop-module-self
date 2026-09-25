@@ -173,10 +173,10 @@ func (m *Module) record(ref model.EntityRef, metric string, now time.Time, v flo
 	key := data.SeriesRef{Entity: ref, Metric: metric}
 	h := m.series[key]
 	if h == nil {
-		h = newHistory(int(m.opts.History / m.opts.Interval))
+		h = data.NewRing(int(m.opts.History / m.opts.Interval))
 		m.series[key] = h
 	}
-	h.add(data.Point{T: now.UnixNano(), V: v})
+	h.Add(data.Point{T: now.UnixNano(), V: v})
 }
 
 // newEvents turns log lines written since the last call into events.

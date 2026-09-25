@@ -45,7 +45,7 @@ type Module struct {
 	opts  options
 
 	mu       sync.Mutex // guards what follows, shared by Run and queries
-	series   map[data.SeriesRef]*history
+	series   map[data.SeriesRef]*data.Ring
 	sent     map[model.EntityRef]model.Entity // entities as last sent, without Seen
 	events   []model.Event                    // newest last, at most eventCap
 	logNext  uint64
@@ -74,7 +74,7 @@ func (m *Module) Configure(_ context.Context, cfg module.Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.name, m.opts = cfg.Name, o
-	m.series = map[data.SeriesRef]*history{}
+	m.series = map[data.SeriesRef]*data.Ring{}
 	m.sent = map[model.EntityRef]model.Entity{}
 	m.events, m.logNext, m.counters = nil, 0, map[string]uint64{}
 	m.runtime = []metrics.Sample{{Name: nativeHeap}, {Name: nativeGoroutines}}
@@ -150,7 +150,7 @@ func (m *Module) QuerySeries(ctx context.Context, q data.SeriesQuery) ([]data.Se
 		unit, _ := unitOf(ref.Metric)
 		s := data.Series{Ref: ref, Unit: unit}
 		if h := m.series[ref]; h != nil {
-			s.Points = thin(h.in(q.Window), q)
+			s.Points = thin(h.In(q.Window), q)
 		}
 		out = append(out, s)
 	}
