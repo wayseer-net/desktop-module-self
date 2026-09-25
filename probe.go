@@ -1,0 +1,75 @@
+package self
+
+import (
+	"mindseye/internal/data"
+	"mindseye/internal/kernel"
+	"mindseye/internal/model"
+	"sync/atomic"
+	"time"
+)
+
+// ModuleState is one module instance as the app sees it.
+type ModuleState struct {
+	Name  model.ModuleID
+	Kind  string
+	State data.State
+	Err   string // the module's health error; module errors never carry secrets
+}
+
+// Probe is what the app knows about itself. The app sets its parts; the module reads them.
+type Probe struct {
+	frames  frameStats
+	bus     atomic.Pointer[kernel.Bus]
+	log     atomic.Pointer[kernel.Ring]
+	modules atomic.Pointer[func() []ModuleState]
+}
+
+// Default is the probe the registered `internal` kind reads.
+var Default = NewProbe()
+
+// NewProbe returns a probe with nothing set.
+func NewProbe() *Probe { return &Probe{} }
+
+// RecordFrame adds one frame's duration; it is lock-free and allocation-free for the render loop.
+func (p *Probe) RecordFrame(d time.Duration) { p.frames.record(int64(d)) }
+
+// SetBus sets the bus whose traffic is reported.
+func (p *Probe) SetBus(b *kernel.Bus) { p.bus.Store(b) }
+
+// SetLog sets the log ring whose lines become events.
+func (p *Probe) SetLog(r *kernel.Ring) { p.log.Store(r) }
+
+// SetModules sets how to list the module instances and their freshness.
+func (p *Probe) SetModules(fn func() []ModuleState) { p.modules.Store(&fn) }
+
+func (p *Probe) moduleStates() []ModuleState {
+	if fn := p.modules.Load(); fn != nil {
+		return (*fn)()
+	}
+	return nil
+}
+
+// frameStats accumulates frame durations between samples.
+type frameStats struct {
+	count, sum, max atomic.Int64
+}
+
+func (f *frameStats) record(ns int64) {
+	f.count.Add(1)
+	f.sum.Add(ns)
+	for m := f.max.Load(); ns > m; m = f.max.Load() {
+		if f.max.CompareAndSwap(m, ns) {
+			return
+		}
+	}
+}
+
+// take returns and resets the frames since the last take; a frame recorded mid-take may skew
+// one sample slightly, which a 1 s mean tolerates.
+func (f *frameStats) take() (count int64, mean, maxDur time.Duration) {
+	n, s, m := f.count.Swap(0), f.sum.Swap(0), f.max.Swap(0)
+	if n == 0 {
+		return 0, 0, 0
+	}
+	return n, time.Duration(s / n), time.Duration(m)
+}
