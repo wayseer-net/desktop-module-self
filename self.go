@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"mindseye/internal/data"
-	"mindseye/internal/model"
-	"mindseye/internal/module"
+	"mindseye/pkg/sdk"
 	"runtime/debug"
 	"runtime/metrics"
 	"slices"
@@ -21,7 +19,7 @@ const Kind = "internal"
 // eventCap bounds the log events kept for queries.
 const eventCap = 2000
 
-func init() { module.Register(Kind, func() module.Module { return New(Default) }) }
+func init() { sdk.Register(Kind, func() sdk.Module { return New(Default) }) }
 
 type options struct {
 	Interval time.Duration `yaml:"interval"` // sampling period
@@ -41,13 +39,13 @@ func (o options) validate() error {
 // Module reports the running app to itself.
 type Module struct {
 	probe *Probe
-	name  model.ModuleID
+	name  sdk.ModuleID
 	opts  options
 
 	mu       sync.Mutex // guards what follows, shared by Run and queries
-	series   map[data.SeriesRef]*data.Ring
-	sent     map[model.EntityRef]model.Entity // entities as last sent, without Seen
-	events   []model.Event                    // newest last, at most eventCap
+	series   map[sdk.SeriesRef]*sdk.Ring
+	sent     map[sdk.EntityRef]sdk.Entity // entities as last sent, without Seen
+	events   []sdk.Event                  // newest last, at most eventCap
 	logNext  uint64
 	counters map[string]uint64 // cumulative totals behind the rate series
 	runtime  []metrics.Sample
@@ -58,12 +56,12 @@ type Module struct {
 func New(p *Probe) *Module { return &Module{probe: p} }
 
 // Info describes the module.
-func (m *Module) Info() module.Info {
-	return module.Info{Kind: Kind, Version: version(), Description: "Mind's Eye itself: frame time, memory, the event bus, modules and the log"}
+func (m *Module) Info() sdk.Info {
+	return sdk.Info{Kind: Kind, Version: version(), Description: "Mind's Eye itself: frame time, memory, the event bus, modules and the log"}
 }
 
 // Configure decodes options and resets the history.
-func (m *Module) Configure(_ context.Context, cfg module.Config) error {
+func (m *Module) Configure(_ context.Context, cfg sdk.Config) error {
 	o := options{Interval: time.Second, History: time.Hour}
 	if err := cfg.Decode(&o); err != nil {
 		return err
@@ -74,8 +72,8 @@ func (m *Module) Configure(_ context.Context, cfg module.Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.name, m.opts = cfg.Name, o
-	m.series = map[data.SeriesRef]*data.Ring{}
-	m.sent = map[model.EntityRef]model.Entity{}
+	m.series = map[sdk.SeriesRef]*sdk.Ring{}
+	m.sent = map[sdk.EntityRef]sdk.Entity{}
 	m.events, m.logNext, m.counters = nil, 0, map[string]uint64{}
 	m.runtime = []metrics.Sample{{Name: nativeHeap}, {Name: nativeGoroutines}}
 	m.last = time.Time{}
@@ -83,7 +81,7 @@ func (m *Module) Configure(_ context.Context, cfg module.Config) error {
 }
 
 // Run sends a snapshot, then samples every interval until ctx ends.
-func (m *Module) Run(ctx context.Context, sink module.Sink) error {
+func (m *Module) Run(ctx context.Context, sink sdk.Sink) error {
 	m.mu.Lock()
 	clear(m.sent) // a snapshot resends everything
 	m.mu.Unlock()
@@ -105,10 +103,10 @@ func (m *Module) Run(ctx context.Context, sink module.Sink) error {
 }
 
 // Health is always good: the source is the process itself.
-func (m *Module) Health() data.Health { return data.Health{} }
+func (m *Module) Health() sdk.Health { return sdk.Health{} }
 
 // tick samples every series and returns what changed in the world since the last tick.
-func (m *Module) tick(now time.Time) *model.ChangeSet {
+func (m *Module) tick(now time.Time) *sdk.ChangeSet {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	events, missed := m.newEvents(now)
@@ -119,7 +117,7 @@ func (m *Module) tick(now time.Time) *model.ChangeSet {
 }
 
 // Discover returns the module's whole state without changing what Run has sent.
-func (m *Module) Discover(ctx context.Context) (*model.ChangeSet, error) {
+func (m *Module) Discover(ctx context.Context) (*sdk.ChangeSet, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -130,23 +128,23 @@ func (m *Module) Discover(ctx context.Context) (*model.ChangeSet, error) {
 	for i := range ents {
 		ents[i].Seen = now
 	}
-	return &model.ChangeSet{Upserts: ents, Edges: edges}, nil
+	return &sdk.ChangeSet{Upserts: ents, Edges: edges}, nil
 }
 
 // Metrics lists the series the module records.
-func (m *Module) Metrics() []module.Metric { return slices.Clone(catalogue) }
+func (m *Module) Metrics() []sdk.Metric { return slices.Clone(catalogue) }
 
 // QuerySeries answers from the recorded history, thinned to about one point per step.
-func (m *Module) QuerySeries(ctx context.Context, q data.SeriesQuery) ([]data.Series, error) {
+func (m *Module) QuerySeries(ctx context.Context, q sdk.SeriesQuery) ([]sdk.Series, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []data.Series
+	var out []sdk.Series
 	for _, ref := range m.queried(q) {
 		unit, _ := unitOf(ref.Metric)
-		s := data.Series{Ref: ref, Unit: unit}
+		s := sdk.Series{Ref: ref, Unit: unit}
 		if h := m.series[ref]; h != nil {
 			s.Points = thin(h.In(q.Window), q)
 		}
@@ -156,21 +154,21 @@ func (m *Module) QuerySeries(ctx context.Context, q data.SeriesQuery) ([]data.Se
 }
 
 // queried lists the asked-for series that exist, in query order.
-func (m *Module) queried(q data.SeriesQuery) []data.SeriesRef {
-	var out []data.SeriesRef
+func (m *Module) queried(q sdk.SeriesQuery) []sdk.SeriesRef {
+	var out []sdk.SeriesRef
 	for _, e := range m.matching(q) {
 		for _, name := range q.Metrics {
-			i := slices.IndexFunc(catalogue, func(c module.Metric) bool { return c.Name == name })
+			i := slices.IndexFunc(catalogue, func(c sdk.Metric) bool { return c.Name == name })
 			if i >= 0 && slices.Contains(catalogue[i].Kinds, e.Kind) {
-				out = append(out, data.SeriesRef{Entity: e.Ref, Metric: name})
+				out = append(out, sdk.SeriesRef{Entity: e.Ref, Metric: name})
 			}
 		}
 	}
 	return out
 }
 
-func (m *Module) matching(q data.SeriesQuery) []model.Entity {
-	var out []model.Entity
+func (m *Module) matching(q sdk.SeriesQuery) []sdk.Entity {
+	var out []sdk.Entity
 	if len(q.Entities) > 0 {
 		for _, r := range q.Entities {
 			if e, ok := m.sent[r]; ok {
@@ -187,21 +185,21 @@ func (m *Module) matching(q data.SeriesQuery) []model.Entity {
 	return out
 }
 
-func thin(ps []data.Point, q data.SeriesQuery) []data.Point {
+func thin(ps []sdk.Point, q sdk.SeriesQuery) []sdk.Point {
 	if q.Step <= 0 {
 		return ps
 	}
-	return data.Downsample(ps, q.Window, int(q.Window.Span()/q.Step))
+	return sdk.Downsample(ps, q.Window, int(q.Window.Span()/q.Step))
 }
 
 // QueryEvents answers from the log events kept so far.
-func (m *Module) QueryEvents(ctx context.Context, q module.EventQuery) ([]model.Event, error) {
+func (m *Module) QueryEvents(ctx context.Context, q sdk.EventQuery) ([]sdk.Event, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []model.Event
+	var out []sdk.Event
 	for i := len(m.events) - 1; i >= 0 && (q.Limit == 0 || len(out) < q.Limit); i-- {
 		if e := m.events[i]; eventMatches(&e, q) {
 			out = append(out, e)
@@ -211,7 +209,7 @@ func (m *Module) QueryEvents(ctx context.Context, q module.EventQuery) ([]model.
 	return out, nil
 }
 
-func eventMatches(e *model.Event, q module.EventQuery) bool {
+func eventMatches(e *sdk.Event, q sdk.EventQuery) bool {
 	switch {
 	case e.Severity < q.MinSeverity:
 		return false
@@ -224,7 +222,7 @@ func eventMatches(e *model.Event, q module.EventQuery) bool {
 }
 
 // Search finds the module's entities whose name contains text, ignoring case.
-func (m *Module) Search(ctx context.Context, text string, limit int) ([]model.EntityRef, error) {
+func (m *Module) Search(ctx context.Context, text string, limit int) ([]sdk.EntityRef, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -235,7 +233,7 @@ func (m *Module) Search(ctx context.Context, text string, limit int) ([]model.En
 	ents, _ := m.world()
 	m.mu.Unlock()
 	text = strings.ToLower(text)
-	var out []model.EntityRef
+	var out []sdk.EntityRef
 	for _, e := range ents {
 		if len(out) < limit && strings.Contains(strings.ToLower(e.Name), text) {
 			out = append(out, e.Ref)

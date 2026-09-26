@@ -1,18 +1,16 @@
 package self
 
 import (
-	"mindseye/internal/data"
-	"mindseye/internal/kernel"
-	"mindseye/internal/model"
+	"mindseye/pkg/sdk"
 	"sync/atomic"
 	"time"
 )
 
 // ModuleState is one module instance as the app sees it.
 type ModuleState struct {
-	Name  model.ModuleID
+	Name  sdk.ModuleID
 	Kind  string
-	State data.State
+	State sdk.State
 	Err   string // the module's health error; module errors never carry secrets
 	Note  string // a limit the module reports that is not an error
 }
@@ -20,8 +18,8 @@ type ModuleState struct {
 // Probe is what the app knows about itself. The app sets its parts; the module reads them.
 type Probe struct {
 	frames  frameStats
-	bus     atomic.Pointer[kernel.Bus]
-	log     atomic.Pointer[kernel.Ring]
+	bus     atomic.Pointer[func() BusTraffic]
+	log     atomic.Pointer[LogSource]
 	modules atomic.Pointer[func() []ModuleState]
 }
 
@@ -34,11 +32,30 @@ func NewProbe() *Probe { return &Probe{} }
 // RecordFrame adds one frame's duration; it is lock-free and allocation-free for the render loop.
 func (p *Probe) RecordFrame(d time.Duration) { p.frames.record(int64(d)) }
 
-// SetBus sets the bus whose traffic is reported.
-func (p *Probe) SetBus(b *kernel.Bus) { p.bus.Store(b) }
+// BusTraffic is the app's event bus: its topics, and the messages published and dropped
+// across them since it started.
+type BusTraffic struct {
+	Topics             int
+	Published, Dropped uint64
+}
 
-// SetLog sets the log ring whose lines become events.
-func (p *Probe) SetLog(r *kernel.Ring) { p.log.Store(r) }
+// LogSource hands out the log lines written since seq, and the sequence number to ask from next.
+type LogSource interface {
+	Since(seq uint64) (lines []string, next uint64)
+}
+
+// SetBus sets how to read the bus's traffic.
+func (p *Probe) SetBus(fn func() BusTraffic) { p.bus.Store(&fn) }
+
+// SetLog sets the log whose lines become events.
+func (p *Probe) SetLog(l LogSource) { p.log.Store(&l) }
+
+func (p *Probe) busTraffic() (BusTraffic, bool) {
+	if fn := p.bus.Load(); fn != nil {
+		return (*fn)(), true
+	}
+	return BusTraffic{}, false
+}
 
 // SetModules sets how to list the module instances and their freshness.
 func (p *Probe) SetModules(fn func() []ModuleState) { p.modules.Store(&fn) }

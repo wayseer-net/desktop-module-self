@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"mindseye/internal/data"
-	"mindseye/internal/kernel"
-	"mindseye/internal/model"
-	"mindseye/internal/module"
-	"mindseye/internal/module/conformance"
+	"mindseye/pkg/sdk"
+	"mindseye/pkg/sdk/sdktest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,39 +15,51 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// testProbe is a probe fed the way the app feeds it: a bus with drops, logs, modules, frames.
+// testProbe is a probe fed the way the app feeds it: bus traffic with drops, logs, modules
+// and frames.
 func testProbe(t *testing.T) (*Probe, *slog.Logger) {
 	t.Helper()
-	var bus kernel.Bus
-	topic := kernel.NewTopic[int](&bus, "test")
-	sub := topic.Subscribe(1)
-	t.Cleanup(sub.Close)
-	topic.Publish(1)
-	topic.Publish(2) // dropped
-	log, ring := kernel.NewLogger(discard{}, slog.LevelDebug, 64)
+	lines := &testLog{}
+	log := slog.New(slog.NewTextHandler(lines, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	log.Info("started")
 	log.Warn("disk nearly full", "free", "2%")
 	p := NewProbe()
-	p.SetBus(&bus)
-	p.SetLog(ring)
+	p.SetBus(func() BusTraffic { return BusTraffic{Topics: 1, Published: 2, Dropped: 1} })
+	p.SetLog(lines)
 	p.SetModules(func() []ModuleState {
 		return []ModuleState{
-			{Name: "mindseye", Kind: "internal", State: data.FreshLive},
-			{Name: "prom", Kind: "prometheus", State: data.FreshError, Err: "connection refused"},
+			{Name: "mindseye", Kind: "internal", State: sdk.FreshLive},
+			{Name: "prom", Kind: "prometheus", State: sdk.FreshError, Err: "connection refused"},
 		}
 	})
 	p.RecordFrame(4 * time.Millisecond)
 	return p, log
 }
 
-type discard struct{}
+// testLog keeps the lines written to it and hands them out as the app's log ring does.
+type testLog struct {
+	mu    sync.Mutex
+	lines []string
+}
 
-func (discard) Write(p []byte) (int, error) { return len(p), nil }
+func (l *testLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lines = append(l.lines, strings.TrimSuffix(string(p), "\n"))
+	return len(p), nil
+}
+
+func (l *testLog) Since(seq uint64) (lines []string, next uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := uint64(len(l.lines))
+	return slices.Clone(l.lines[min(seq, n):]), n
+}
 
 func TestConformance(t *testing.T) {
 	p, _ := testProbe(t)
-	conformance.Run(t, conformance.Case{
-		New:     func() module.Module { return New(p) },
+	sdktest.Conform(t, sdktest.Case{
+		New:     func() sdk.Module { return New(p) },
 		Name:    "mindseye",
 		Options: "interval: 20ms",
 	})
@@ -58,33 +68,33 @@ func TestConformance(t *testing.T) {
 // recSink records what a module sends.
 type recSink struct {
 	mu   sync.Mutex
-	sets []model.ChangeSet
+	sets []sdk.ChangeSet
 }
 
-func (s *recSink) Snapshot(_ context.Context, cs *model.ChangeSet) error { return s.add(cs) }
-func (s *recSink) Delta(_ context.Context, cs *model.ChangeSet) error    { return s.add(cs) }
+func (s *recSink) Snapshot(_ context.Context, cs *sdk.ChangeSet) error { return s.add(cs) }
+func (s *recSink) Delta(_ context.Context, cs *sdk.ChangeSet) error    { return s.add(cs) }
 
-func (s *recSink) add(cs *model.ChangeSet) error {
+func (s *recSink) add(cs *sdk.ChangeSet) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sets = append(s.sets, *cs)
 	return nil
 }
 
-func (s *recSink) events() []model.Event {
+func (s *recSink) events() []sdk.Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []model.Event
+	var out []sdk.Event
 	for _, cs := range s.sets {
 		out = append(out, cs.Events...)
 	}
 	return out
 }
 
-func (s *recSink) entity(ref model.EntityRef) (model.Entity, bool) {
+func (s *recSink) entity(ref sdk.EntityRef) (sdk.Entity, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var last model.Entity
+	var last sdk.Entity
 	found := false
 	for _, cs := range s.sets {
 		for _, e := range cs.Upserts {
@@ -116,13 +126,13 @@ func running(t *testing.T, p *Probe, options string) (*Module, *recSink) {
 	return m, sink
 }
 
-func config(t *testing.T, name model.ModuleID, options string) module.Config {
+func config(t *testing.T, name sdk.ModuleID, options string) sdk.Config {
 	t.Helper()
 	var doc yaml.Node
 	if err := yaml.Unmarshal([]byte(options), &doc); err != nil {
 		t.Fatal(err)
 	}
-	c := module.Config{Name: name, Line: 1}
+	c := sdk.Config{Name: name, Line: 1}
 	if len(doc.Content) > 0 {
 		c.Options = *doc.Content[0]
 	}
@@ -145,12 +155,12 @@ func TestFrameTimeSeriesAppearsAfterFramesAreRecorded(t *testing.T) {
 	m, _ := running(t, p, "interval: 10ms")
 	app := appRef("mindseye")
 	now := time.Now()
-	q := data.SeriesQuery{
-		Entities: []model.EntityRef{app},
+	q := sdk.SeriesQuery{
+		Entities: []sdk.EntityRef{app},
 		Metrics:  []string{MetricFrameTime, MetricFrameTimeMax},
-		Window:   data.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
+		Window:   sdk.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
 	}
-	series := func() []data.Series {
+	series := func() []sdk.Series {
 		got, err := m.QuerySeries(context.Background(), q)
 		if err != nil {
 			t.Fatal(err)
@@ -176,7 +186,7 @@ func TestFrameTimeSeriesAppearsAfterFramesAreRecorded(t *testing.T) {
 	if v := got[1].Points[0].V; v != 0.006 {
 		t.Errorf("max frame time %v s, want 0.006", v)
 	}
-	if got[0].Unit != model.UnitSeconds {
+	if got[0].Unit != sdk.UnitSeconds {
 		t.Errorf("unit %q", got[0].Unit)
 	}
 }
@@ -216,7 +226,7 @@ func TestLogLinesBecomeEventsOnceAcrossRestarts(t *testing.T) {
 	if !slices.Equal(msgs, want) {
 		t.Fatalf("messages %q, want %q", msgs, want)
 	}
-	if evs[1].Severity != model.SevWarn || evs[2].Severity != model.SevError {
+	if evs[1].Severity != sdk.SevWarn || evs[2].Severity != sdk.SevError {
 		t.Errorf("severities %v, %v", evs[1].Severity, evs[2].Severity)
 	}
 	if time.Since(evs[0].At) > time.Minute {
@@ -227,7 +237,7 @@ func TestLogLinesBecomeEventsOnceAcrossRestarts(t *testing.T) {
 func TestModulesBecomeEntitiesWithTheirFreshness(t *testing.T) {
 	p, _ := testProbe(t)
 	var mu sync.Mutex
-	state := data.FreshError
+	state := sdk.FreshError
 	p.SetModules(func() []ModuleState {
 		mu.Lock()
 		defer mu.Unlock()
@@ -237,13 +247,13 @@ func TestModulesBecomeEntitiesWithTheirFreshness(t *testing.T) {
 	ref := moduleRef("mindseye", "prom")
 	eventually(t, "the prom entity", func() bool { _, ok := sink.entity(ref); return ok })
 	e, _ := sink.entity(ref)
-	if e.Status.Level != model.StatusCrit || e.Status.Reason != "connection refused" || e.Attrs["note"].Str() != "no journal" {
+	if e.Status.Level != sdk.StatusCrit || e.Status.Reason != "connection refused" || e.Attrs["note"].Str() != "no journal" {
 		t.Errorf("status %+v, attrs %v", e.Status, e.Attrs)
 	}
 	mu.Lock()
-	state = data.FreshLive
+	state = sdk.FreshLive
 	mu.Unlock()
-	eventually(t, "prom to recover", func() bool { e, _ := sink.entity(ref); return e.Status.Level == model.StatusOK })
+	eventually(t, "prom to recover", func() bool { e, _ := sink.entity(ref); return e.Status.Level == sdk.StatusOK })
 }
 
 func TestSnapshotHasTheAppBusAndModules(t *testing.T) {
@@ -256,11 +266,11 @@ func TestSnapshotHasTheAppBusAndModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var refs []model.EntityRef
+	var refs []sdk.EntityRef
 	for _, e := range cs.Upserts {
 		refs = append(refs, e.Ref)
 	}
-	want := []model.EntityRef{appRef("mindseye"), busRef("mindseye"), moduleRef("mindseye", "mindseye"), moduleRef("mindseye", "prom")}
+	want := []sdk.EntityRef{appRef("mindseye"), busRef("mindseye"), moduleRef("mindseye", "mindseye"), moduleRef("mindseye", "prom")}
 	if !slices.Equal(refs, want) {
 		t.Errorf("entities %v, want %v", refs, want)
 	}
