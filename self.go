@@ -97,10 +97,8 @@ func (m *Module) Run(ctx context.Context, sink module.Sink) error {
 		case <-ctx.Done():
 			return nil
 		case now := <-t.C:
-			if cs := m.tick(now); !cs.Empty() {
-				if err := sink.Delta(ctx, cs); err != nil {
-					return err
-				}
+			if err := sink.Delta(ctx, m.tick(now)); err != nil { // empty still says it is live
+				return err
 			}
 		}
 	}
