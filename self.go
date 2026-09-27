@@ -75,7 +75,7 @@ func (m *Module) Configure(_ context.Context, cfg sdk.Config) error {
 	m.series = map[sdk.SeriesRef]*sdk.Ring{}
 	m.sent = map[sdk.EntityRef]sdk.Entity{}
 	m.events, m.logNext, m.counters = nil, 0, map[string]uint64{}
-	m.runtime = []metrics.Sample{{Name: nativeHeap}, {Name: nativeGoroutines}}
+	m.runtime = []metrics.Sample{{Name: nativeHeap}, {Name: nativeGoroutines}, {Name: nativeTotal}, {Name: nativeLimit}}
 	m.last = time.Time{}
 	return nil
 }

@@ -2,6 +2,7 @@ package self
 
 import (
 	"maps"
+	"math"
 	"mindseye/pkg/sdk"
 	"os"
 	"runtime"
@@ -148,6 +149,10 @@ func (m *Module) sample(now time.Time, logMissed uint64) {
 	metrics.Read(m.runtime)
 	m.record(app, MetricHeap, now, float64(m.runtime[0].Value.Uint64()))
 	m.record(app, MetricGoroutines, now, float64(m.runtime[1].Value.Uint64()))
+	m.record(app, MetricRuntimeTotal, now, float64(m.runtime[2].Value.Uint64()))
+	if limit := m.runtime[3].Value.Uint64(); limit < math.MaxInt64 {
+		m.record(app, MetricMemoryLimit, now, float64(limit))
+	}
 	if !first {
 		m.record(app, MetricLogMissed, now, float64(logMissed)/elapsed.Seconds())
 	}

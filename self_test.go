@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"mindseye/pkg/sdk"
 	"mindseye/pkg/sdk/sdktest"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -284,5 +286,52 @@ func TestBadOptionsAreRejected(t *testing.T) {
 		if err := New(NewProbe()).Configure(context.Background(), config(t, "mindseye", opts)); err == nil {
 			t.Errorf("%q accepted", opts)
 		}
+	}
+}
+
+func TestMemoryLimitIsReportedBesideTheHeap(t *testing.T) {
+	was := debug.SetMemoryLimit(900 << 20)
+	t.Cleanup(func() { debug.SetMemoryLimit(was) })
+	m, _ := running(t, NewProbe(), "interval: 10ms")
+	now := time.Now()
+	q := sdk.SeriesQuery{
+		Entities: []sdk.EntityRef{appRef("mindseye")},
+		Metrics:  []string{MetricHeap, MetricRuntimeTotal, MetricMemoryLimit},
+		Window:   sdk.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
+	}
+	var got []sdk.Series
+	eventually(t, "memory points", func() bool {
+		var err error
+		if got, err = m.QuerySeries(context.Background(), q); err != nil {
+			t.Fatal(err)
+		}
+		return len(got) == 3 && len(got[0].Points) > 0 && len(got[1].Points) > 0 && len(got[2].Points) > 0
+	})
+	heap, total, limit := got[0].Points[0].V, got[1].Points[0].V, got[2].Points[0].V
+	if limit != 900<<20 || got[2].Unit != sdk.UnitBytes {
+		t.Errorf("limit %v %s, want 900 MiB in bytes", limit, got[2].Unit)
+	}
+	if total < heap {
+		t.Errorf("runtime total %v is less than the heap %v", total, heap)
+	}
+}
+
+func TestNoMemoryLimitHasNoPoints(t *testing.T) {
+	was := debug.SetMemoryLimit(math.MaxInt64)
+	t.Cleanup(func() { debug.SetMemoryLimit(was) })
+	m, _ := running(t, NewProbe(), "interval: 10ms")
+	now := time.Now()
+	q := sdk.SeriesQuery{
+		Entities: []sdk.EntityRef{appRef("mindseye")},
+		Metrics:  []string{MetricHeap, MetricMemoryLimit},
+		Window:   sdk.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
+	}
+	var got []sdk.Series
+	eventually(t, "heap points", func() bool {
+		got, _ = m.QuerySeries(context.Background(), q)
+		return len(got) == 2 && len(got[0].Points) > 1
+	})
+	if len(got[1].Points) > 0 {
+		t.Errorf("memory.limit has points %v with no limit set", got[1].Points)
 	}
 }

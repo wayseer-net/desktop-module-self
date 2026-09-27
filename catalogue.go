@@ -9,6 +9,8 @@ const (
 	MetricFrameTime    = "frame.time"
 	MetricFrameTimeMax = "frame.time_max"
 	MetricHeap         = "memory.heap"
+	MetricRuntimeTotal = "memory.runtime"
+	MetricMemoryLimit  = "memory.limit"
 	MetricGoroutines   = "runtime.goroutines"
 	MetricBusPublished = "bus.published"
 	MetricBusDropped   = "bus.dropped"
@@ -19,12 +21,16 @@ const (
 const (
 	nativeHeap       = "/memory/classes/heap/objects:bytes"
 	nativeGoroutines = "/sched/goroutines:goroutines"
+	nativeTotal      = "/memory/classes/total:bytes"
+	nativeLimit      = "/gc/gomemlimit:bytes"
 )
 
 var catalogue = []sdk.Metric{
 	{Name: MetricFrameTime, Unit: sdk.UnitSeconds, Kinds: []sdk.Kind{sdk.KindProcess}, Description: "mean time to draw a frame; no point while nothing is drawn"},
 	{Name: MetricFrameTimeMax, Unit: sdk.UnitSeconds, Kinds: []sdk.Kind{sdk.KindProcess}, Description: "slowest frame"},
 	{Name: MetricHeap, Unit: sdk.UnitBytes, Kinds: []sdk.Kind{sdk.KindProcess}, Description: "live heap objects", Native: nativeHeap},
+	{Name: MetricRuntimeTotal, Unit: sdk.UnitBytes, Kinds: []sdk.Kind{sdk.KindProcess}, Description: "all memory the Go runtime holds, which memory.limit bounds", Native: nativeTotal},
+	{Name: MetricMemoryLimit, Unit: sdk.UnitBytes, Kinds: []sdk.Kind{sdk.KindProcess}, Description: "the config's memory_limit, past which the GC works harder", Native: nativeLimit},
 	{Name: MetricGoroutines, Unit: sdk.UnitCount, Kinds: []sdk.Kind{sdk.KindProcess}, Description: "live goroutines", Native: nativeGoroutines},
 	{Name: MetricBusPublished, Unit: sdk.UnitPerSec, Kinds: []sdk.Kind{KindBus}, Description: "events published on every topic"},
 	{Name: MetricBusDropped, Unit: sdk.UnitPerSec, Kinds: []sdk.Kind{KindBus}, Description: "events a full subscriber missed"},
