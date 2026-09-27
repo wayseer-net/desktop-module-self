@@ -22,8 +22,8 @@ const eventCap = 2000
 func init() { sdk.Register(Kind, func() sdk.Module { return New(Default) }) }
 
 type options struct {
-	Interval time.Duration `yaml:"interval"` // sampling period
-	History  time.Duration `yaml:"history"`  // how far back series are kept
+	Interval time.Duration `yaml:"interval"` // how often Mind's Eye samples itself; default 1s
+	History  time.Duration `yaml:"history"`  // how far back series are kept, 10 intervals to 24h; default 1h
 }
 
 func (o options) validate() error {
