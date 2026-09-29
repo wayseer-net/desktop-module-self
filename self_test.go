@@ -34,7 +34,7 @@ func testProbe(t *testing.T) (*Probe, *slog.Logger) {
 			{Name: "prom", Kind: "prometheus", State: sdk.FreshError, Err: "connection refused"},
 		}
 	})
-	p.RecordFrame(4 * time.Millisecond)
+	p.RecordFrame(4*time.Millisecond, FrameInput)
 	return p, log
 }
 
@@ -175,8 +175,8 @@ func TestFrameTimeSeriesAppearsAfterFramesAreRecorded(t *testing.T) {
 			t.Fatalf("%s has points before any frame was drawn", s.Ref.Metric)
 		}
 	}
-	p.RecordFrame(2 * time.Millisecond)
-	p.RecordFrame(6 * time.Millisecond)
+	p.RecordFrame(2*time.Millisecond, FrameInput)
+	p.RecordFrame(6*time.Millisecond, FrameInput)
 	eventually(t, "frame-time points", func() bool {
 		got := series()
 		return len(got) == 2 && len(got[0].Points) > 0 && len(got[1].Points) > 0
@@ -195,7 +195,7 @@ func TestFrameTimeSeriesAppearsAfterFramesAreRecorded(t *testing.T) {
 
 func TestRecordFrameDoesNotAllocate(t *testing.T) {
 	p := NewProbe()
-	if n := testing.AllocsPerRun(100, func() { p.RecordFrame(time.Millisecond) }); n != 0 {
+	if n := testing.AllocsPerRun(100, func() { p.RecordFrame(time.Millisecond, FrameInput) }); n != 0 {
 		t.Errorf("RecordFrame allocates %v times", n)
 	}
 }
@@ -333,5 +333,43 @@ func TestNoMemoryLimitHasNoPoints(t *testing.T) {
 	})
 	if len(got[1].Points) > 0 {
 		t.Errorf("memory.limit has points %v with no limit set", got[1].Points)
+	}
+}
+
+func TestFrameRatesAreCountedByReason(t *testing.T) {
+	p := NewProbe()
+	m, _ := running(t, p, "interval: 10ms")
+	now := time.Now()
+	live, input, world := MetricFrameRate+".live", MetricFrameRate+".input", MetricFrameRate+".world"
+	q := sdk.SeriesQuery{
+		Entities: []sdk.EntityRef{appRef("mindseye")},
+		Metrics:  []string{live, input, world},
+		Window:   sdk.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
+	}
+	most := map[string]float64{}
+	eventually(t, "frame rates", func() bool {
+		p.RecordFrame(time.Millisecond, FrameLive)
+		p.RecordFrame(time.Millisecond, FrameInput)
+		got, err := m.QuerySeries(context.Background(), q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range got {
+			for _, pt := range s.Points {
+				most[s.Ref.Metric] = max(most[s.Ref.Metric], pt.V)
+			}
+		}
+		return most[live] > 0 && most[input] > 0
+	})
+	if most[world] != 0 {
+		t.Errorf("no world frames were drawn, but the rate reached %v", most[world])
+	}
+}
+
+func TestFrameReasonsAreNamed(t *testing.T) {
+	for r := range FrameReasons {
+		if r.String() == "" || r.String() == "none" {
+			t.Errorf("reason %d has no name", r)
+		}
 	}
 }

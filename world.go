@@ -146,6 +146,9 @@ func (m *Module) sample(now time.Time, logMissed uint64) {
 		m.record(app, MetricFrameTime, now, mean.Seconds())
 		m.record(app, MetricFrameTimeMax, now, slowest.Seconds())
 	}
+	for r := range FrameReasons {
+		m.rate(app, frameRateOf(r), now, elapsed, m.probe.why[r].Load(), first)
+	}
 	metrics.Read(m.runtime)
 	m.record(app, MetricHeap, now, float64(m.runtime[0].Value.Uint64()))
 	m.record(app, MetricGoroutines, now, float64(m.runtime[1].Value.Uint64()))

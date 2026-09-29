@@ -18,6 +18,7 @@ type ModuleState struct {
 // Probe is what the app knows about itself. The app sets its parts; the module reads them.
 type Probe struct {
 	frames  frameStats
+	why     [FrameReasons]atomic.Uint64 // frames drawn for each reason
 	bus     atomic.Pointer[func() BusTraffic]
 	log     atomic.Pointer[LogSource]
 	modules atomic.Pointer[func() []ModuleState]
@@ -29,8 +30,33 @@ var Default = NewProbe()
 // NewProbe returns a probe with nothing set.
 func NewProbe() *Probe { return &Probe{} }
 
-// RecordFrame adds one frame's duration; it is lock-free and allocation-free for the render loop.
-func (p *Probe) RecordFrame(d time.Duration) { p.frames.record(int64(d)) }
+// RecordFrame adds one frame's duration and why it was drawn; it is lock-free and
+// allocation-free for the render loop.
+func (p *Probe) RecordFrame(d time.Duration, why FrameReason) {
+	p.frames.record(int64(d))
+	p.why[why].Add(1)
+}
+
+// Frames is how many frames have been drawn for why.
+func (p *Probe) Frames(why FrameReason) uint64 { return p.why[why].Load() }
+
+// FrameReason is why the app drew a frame.
+type FrameReason uint8
+
+// The reasons, in the order the app checks them.
+const (
+	FrameInput     FrameReason = iota // a key, the pointer, the window, or a reply to them
+	FrameAnimation                    // something moving
+	FrameWorld                        // a module changed the world
+	FrameSeries                       // series or events arrived
+	FrameLive                         // a live time bar moved on
+	FrameDesktop                      // the desktop's look changed
+	FrameReasons                      // how many there are
+)
+
+var reasonNames = [FrameReasons]string{"input", "animation", "world", "series", "live", "desktop"}
+
+func (r FrameReason) String() string { return reasonNames[r] }
 
 // BusTraffic is the app's event bus: its topics, and the messages published and dropped
 // across them since it started.
