@@ -184,13 +184,28 @@ func (m *Module) record(ref sdk.EntityRef, metric string, now time.Time, v float
 	h.Add(sdk.Point{T: now.UnixNano(), V: v})
 }
 
-// newEvents turns log lines written since the last call into events.
+// newEvents turns log lines written since the last call, and reported events, into events.
 func (m *Module) newEvents(now time.Time) (events []sdk.Event, missed uint64) {
-	src := m.probe.log.Load()
-	if src == nil {
-		return nil, 0
+	if src := m.probe.log.Load(); src != nil {
+		events, missed = m.logEvents(*src, now)
 	}
-	lines, next := (*src).Since(m.logNext)
+	for _, e := range m.probe.takeReported() {
+		m.reportNext++
+		e.ID, e.Source = "report-"+strconv.FormatUint(m.reportNext, 10), m.name
+		if e.At.IsZero() {
+			e.At = now
+		}
+		events = append(events, e)
+	}
+	m.events = append(m.events, events...)
+	if over := len(m.events) - eventCap; over > 0 {
+		m.events = slices.Delete(m.events, 0, over)
+	}
+	return events, missed
+}
+
+func (m *Module) logEvents(src LogSource, now time.Time) (events []sdk.Event, missed uint64) {
+	lines, next := src.Since(m.logNext)
 	first := next - uint64(len(lines))
 	missed, m.logNext = first-m.logNext, next
 	for i, line := range lines {
@@ -202,10 +217,6 @@ func (m *Module) newEvents(now time.Time) (events []sdk.Event, missed uint64) {
 			ID: "log-" + strconv.FormatUint(first+uint64(i), 10), Entity: appRef(m.name), At: at,
 			Severity: sev, Kind: "log", Message: msg, Source: m.name,
 		})
-	}
-	m.events = append(m.events, events...)
-	if over := len(m.events) - eventCap; over > 0 {
-		m.events = slices.Delete(m.events, 0, over)
 	}
 	return events, missed
 }

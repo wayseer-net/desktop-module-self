@@ -373,3 +373,27 @@ func TestFrameReasonsAreNamed(t *testing.T) {
 		}
 	}
 }
+
+func TestReportedEventsReachTheWorldOnTheirEntity(t *testing.T) {
+	p, _ := testProbe(t)
+	m, sink := running(t, p, "interval: 10ms")
+	target, _ := sdk.NewEntityRef("k8s", sdk.KindService, "payments-api")
+	p.Report(sdk.Event{Entity: target, Kind: "action", Severity: sdk.SevWarn, Message: "restart failed"})
+	var got sdk.Event
+	eventually(t, "the action event", func() bool {
+		for _, e := range sink.events() {
+			if e.Kind == "action" {
+				got = e
+				return true
+			}
+		}
+		return false
+	})
+	if got.Entity != target || got.Source != "mindseye" || got.ID == "" || got.At.IsZero() || got.Severity != sdk.SevWarn {
+		t.Errorf("event %+v", got)
+	}
+	kept, err := m.QueryEvents(context.Background(), sdk.EventQuery{Kinds: []string{"action"}})
+	if err != nil || len(kept) != 1 || kept[0].ID != got.ID {
+		t.Errorf("QueryEvents = %+v, %v", kept, err)
+	}
+}

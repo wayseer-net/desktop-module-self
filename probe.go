@@ -2,6 +2,7 @@ package self
 
 import (
 	"mindseye/pkg/sdk"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -22,7 +23,13 @@ type Probe struct {
 	bus     atomic.Pointer[func() BusTraffic]
 	log     atomic.Pointer[LogSource]
 	modules atomic.Pointer[func() []ModuleState]
+
+	mu       sync.Mutex
+	reported []sdk.Event // waiting for the next tick, at most reportCap
 }
+
+// reportCap bounds the reported events waiting while the module is not running.
+const reportCap = 256
 
 // Default is the probe the registered `internal` kind reads.
 var Default = NewProbe()
@@ -75,6 +82,24 @@ func (p *Probe) SetBus(fn func() BusTraffic) { p.bus.Store(&fn) }
 
 // SetLog sets the log whose lines become events.
 func (p *Probe) SetLog(l LogSource) { p.log.Store(&l) }
+
+// Report adds e, such as an action's outcome on another module's entity, to the next tick.
+// The module sets its ID and source, and its time if it is zero.
+func (p *Probe) Report(e sdk.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.reported) < reportCap {
+		p.reported = append(p.reported, e)
+	}
+}
+
+func (p *Probe) takeReported() []sdk.Event {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := p.reported
+	p.reported = nil
+	return out
+}
 
 func (p *Probe) busTraffic() (BusTraffic, bool) {
 	if fn := p.bus.Load(); fn != nil {

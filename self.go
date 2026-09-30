@@ -42,14 +42,15 @@ type Module struct {
 	name  sdk.ModuleID
 	opts  options
 
-	mu       sync.Mutex // guards what follows, shared by Run and queries
-	series   map[sdk.SeriesRef]*sdk.Ring
-	sent     map[sdk.EntityRef]sdk.Entity // entities as last sent, without Seen
-	events   []sdk.Event                  // newest last, at most eventCap
-	logNext  uint64
-	counters map[string]uint64 // cumulative totals behind the rate series
-	runtime  []metrics.Sample
-	last     time.Time // the previous tick
+	mu         sync.Mutex // guards what follows, shared by Run and queries
+	series     map[sdk.SeriesRef]*sdk.Ring
+	sent       map[sdk.EntityRef]sdk.Entity // entities as last sent, without Seen
+	events     []sdk.Event                  // newest last, at most eventCap
+	logNext    uint64
+	reportNext uint64            // reported events so far, for their IDs
+	counters   map[string]uint64 // cumulative totals behind the rate series
+	runtime    []metrics.Sample
+	last       time.Time // the previous tick
 }
 
 // New makes an unconfigured module reading p.
