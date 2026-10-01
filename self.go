@@ -22,7 +22,7 @@ const eventCap = 2000
 func init() { sdk.Register(Kind, func() sdk.Module { return New(Default) }) }
 
 type options struct {
-	Interval time.Duration `yaml:"interval"` // how often Mind's Eye samples itself; default 1s
+	Interval time.Duration `yaml:"interval"` // how often Wayseer samples itself; default 1s
 	History  time.Duration `yaml:"history"`  // how far back series are kept, 10 intervals to 24h; default 1h
 }
 
@@ -58,7 +58,7 @@ func New(p *Probe) *Module { return &Module{probe: p} }
 
 // Info describes the module.
 func (m *Module) Info() sdk.Info {
-	return sdk.Info{Kind: Kind, Version: version(), Description: "Mind's Eye itself: frame time, memory, the event bus, modules and the log"}
+	return sdk.Info{Kind: Kind, Version: version(), Description: "Wayseer itself: frame time, memory, the event bus, modules and the log"}
 }
 
 // Configure decodes options and resets the history.

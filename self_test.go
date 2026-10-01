@@ -30,7 +30,7 @@ func testProbe(t *testing.T) (*Probe, *slog.Logger) {
 	p.SetLog(lines)
 	p.SetModules(func() []ModuleState {
 		return []ModuleState{
-			{Name: "mindseye", Kind: "internal", State: sdk.FreshLive},
+			{Name: "wayseer", Kind: "internal", State: sdk.FreshLive},
 			{Name: "prom", Kind: "prometheus", State: sdk.FreshError, Err: "connection refused"},
 		}
 	})
@@ -62,7 +62,7 @@ func TestConformance(t *testing.T) {
 	p, _ := testProbe(t)
 	sdktest.Conform(t, sdktest.Case{
 		New:     func() sdk.Module { return New(p) },
-		Name:    "mindseye",
+		Name:    "wayseer",
 		Options: "interval: 20ms",
 	})
 }
@@ -112,7 +112,7 @@ func (s *recSink) entity(ref sdk.EntityRef) (sdk.Entity, bool) {
 func running(t *testing.T, p *Probe, options string) (*Module, *recSink) {
 	t.Helper()
 	m := New(p)
-	if err := m.Configure(context.Background(), config(t, "mindseye", options)); err != nil {
+	if err := m.Configure(context.Background(), config(t, "wayseer", options)); err != nil {
 		t.Fatal(err)
 	}
 	sink := &recSink{}
@@ -155,7 +155,7 @@ func eventually(t *testing.T, what string, cond func() bool) {
 func TestFrameTimeSeriesAppearsAfterFramesAreRecorded(t *testing.T) {
 	p := NewProbe()
 	m, _ := running(t, p, "interval: 10ms")
-	app := appRef("mindseye")
+	app := appRef("wayseer")
 	now := time.Now()
 	q := sdk.SeriesQuery{
 		Entities: []sdk.EntityRef{app},
@@ -203,7 +203,7 @@ func TestRecordFrameDoesNotAllocate(t *testing.T) {
 func TestLogLinesBecomeEventsOnceAcrossRestarts(t *testing.T) {
 	p, log := testProbe(t)
 	m := New(p)
-	if err := m.Configure(context.Background(), config(t, "mindseye", "interval: 10ms")); err != nil {
+	if err := m.Configure(context.Background(), config(t, "wayseer", "interval: 10ms")); err != nil {
 		t.Fatal(err)
 	}
 	sink := &recSink{}
@@ -220,7 +220,7 @@ func TestLogLinesBecomeEventsOnceAcrossRestarts(t *testing.T) {
 	msgs := make([]string, len(evs))
 	for i, e := range evs {
 		msgs[i] = e.Message
-		if e.Source != "mindseye" || e.Entity != appRef("mindseye") || e.Kind != "log" || e.ID == "" {
+		if e.Source != "wayseer" || e.Entity != appRef("wayseer") || e.Kind != "log" || e.ID == "" {
 			t.Errorf("event %+v", e)
 		}
 	}
@@ -246,7 +246,7 @@ func TestModulesBecomeEntitiesWithTheirFreshness(t *testing.T) {
 		return []ModuleState{{Name: "prom", Kind: "prometheus", State: state, Err: "connection refused", Note: "no journal"}}
 	})
 	_, sink := running(t, p, "interval: 10ms")
-	ref := moduleRef("mindseye", "prom")
+	ref := moduleRef("wayseer", "prom")
 	eventually(t, "the prom entity", func() bool { _, ok := sink.entity(ref); return ok })
 	e, _ := sink.entity(ref)
 	if e.Status.Level != sdk.StatusCrit || e.Status.Reason != "connection refused" || e.Attrs["note"].Str() != "no journal" {
@@ -261,7 +261,7 @@ func TestModulesBecomeEntitiesWithTheirFreshness(t *testing.T) {
 func TestSnapshotHasTheAppBusAndModules(t *testing.T) {
 	p, _ := testProbe(t)
 	m := New(p)
-	if err := m.Configure(context.Background(), config(t, "mindseye", "")); err != nil {
+	if err := m.Configure(context.Background(), config(t, "wayseer", "")); err != nil {
 		t.Fatal(err)
 	}
 	cs, err := m.Discover(context.Background())
@@ -272,7 +272,7 @@ func TestSnapshotHasTheAppBusAndModules(t *testing.T) {
 	for _, e := range cs.Upserts {
 		refs = append(refs, e.Ref)
 	}
-	want := []sdk.EntityRef{appRef("mindseye"), busRef("mindseye"), moduleRef("mindseye", "mindseye"), moduleRef("mindseye", "prom")}
+	want := []sdk.EntityRef{appRef("wayseer"), busRef("wayseer"), moduleRef("wayseer", "prom"), moduleRef("wayseer", "wayseer")}
 	if !slices.Equal(refs, want) {
 		t.Errorf("entities %v, want %v", refs, want)
 	}
@@ -283,7 +283,7 @@ func TestSnapshotHasTheAppBusAndModules(t *testing.T) {
 
 func TestBadOptionsAreRejected(t *testing.T) {
 	for _, opts := range []string{"interval: 1ms", "history: 1s", "interval: soon"} {
-		if err := New(NewProbe()).Configure(context.Background(), config(t, "mindseye", opts)); err == nil {
+		if err := New(NewProbe()).Configure(context.Background(), config(t, "wayseer", opts)); err == nil {
 			t.Errorf("%q accepted", opts)
 		}
 	}
@@ -295,7 +295,7 @@ func TestMemoryLimitIsReportedBesideTheHeap(t *testing.T) {
 	m, _ := running(t, NewProbe(), "interval: 10ms")
 	now := time.Now()
 	q := sdk.SeriesQuery{
-		Entities: []sdk.EntityRef{appRef("mindseye")},
+		Entities: []sdk.EntityRef{appRef("wayseer")},
 		Metrics:  []string{MetricHeap, MetricRuntimeTotal, MetricMemoryLimit},
 		Window:   sdk.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
 	}
@@ -322,7 +322,7 @@ func TestNoMemoryLimitHasNoPoints(t *testing.T) {
 	m, _ := running(t, NewProbe(), "interval: 10ms")
 	now := time.Now()
 	q := sdk.SeriesQuery{
-		Entities: []sdk.EntityRef{appRef("mindseye")},
+		Entities: []sdk.EntityRef{appRef("wayseer")},
 		Metrics:  []string{MetricHeap, MetricMemoryLimit},
 		Window:   sdk.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
 	}
@@ -342,7 +342,7 @@ func TestFrameRatesAreCountedByReason(t *testing.T) {
 	now := time.Now()
 	live, input, world := MetricFrameRate+".live", MetricFrameRate+".input", MetricFrameRate+".world"
 	q := sdk.SeriesQuery{
-		Entities: []sdk.EntityRef{appRef("mindseye")},
+		Entities: []sdk.EntityRef{appRef("wayseer")},
 		Metrics:  []string{live, input, world},
 		Window:   sdk.TimeWindow{From: now.Add(-time.Minute), To: now.Add(time.Minute)},
 	}
@@ -389,7 +389,7 @@ func TestReportedEventsReachTheWorldOnTheirEntity(t *testing.T) {
 		}
 		return false
 	})
-	if got.Entity != target || got.Source != "mindseye" || got.ID == "" || got.At.IsZero() || got.Severity != sdk.SevWarn {
+	if got.Entity != target || got.Source != "wayseer" || got.ID == "" || got.At.IsZero() || got.Severity != sdk.SevWarn {
 		t.Errorf("event %+v", got)
 	}
 	kept, err := m.QueryEvents(context.Background(), sdk.EventQuery{Kinds: []string{"action"}})

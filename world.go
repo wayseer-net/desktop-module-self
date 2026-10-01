@@ -42,7 +42,7 @@ func mustRef(src sdk.ModuleID, kind sdk.Kind, native string) sdk.EntityRef {
 
 // world lists the entities and edges the module owns now: the app, then the rest by ref.
 func (m *Module) world() ([]sdk.Entity, []sdk.Edge) {
-	app := m.entity(appRef(m.name), sdk.KindProcess, "Mind's Eye", sdk.Status{Level: sdk.StatusOK}, map[string]sdk.Value{
+	app := m.entity(appRef(m.name), sdk.KindProcess, "Wayseer", sdk.Status{Level: sdk.StatusOK}, map[string]sdk.Value{
 		"pid":        sdk.Number(float64(os.Getpid())),
 		"go_version": sdk.String(runtime.Version()),
 		"version":    sdk.String(version()),
