@@ -14,15 +14,15 @@ import (
 
 // Entity kinds the module adds to the core vocabulary; the app itself is a core process.
 const (
-	KindBus    sdk.Kind = "mindseye/bus"
-	KindModule sdk.Kind = "mindseye/module"
+	KindBus    sdk.Kind = "wayseer/bus"
+	KindModule sdk.Kind = "wayseer/module"
 )
 
 // started approximates when the process started.
 var started = time.Now()
 
 func appRef(src sdk.ModuleID) sdk.EntityRef {
-	return mustRef(src, sdk.KindProcess, "mindseye")
+	return mustRef(src, sdk.KindProcess, "wayseer")
 }
 
 func busRef(src sdk.ModuleID) sdk.EntityRef { return mustRef(src, KindBus, "bus") }
