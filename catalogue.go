@@ -1,7 +1,7 @@
 package self
 
 import (
-	"mindseye/pkg/sdk"
+	"wayseer/pkg/sdk"
 )
 
 // Metric names.

@@ -1,9 +1,9 @@
 package self
 
 import (
-	"mindseye/pkg/sdk"
 	"testing"
 	"time"
+	"wayseer/pkg/sdk"
 )
 
 func TestParseLogLine(t *testing.T) {

@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"mindseye/pkg/sdk"
 	"runtime/debug"
 	"runtime/metrics"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"wayseer/pkg/sdk"
 )
 
 // Kind is the module kind in config.

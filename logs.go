@@ -2,10 +2,10 @@ package self
 
 import (
 	"log/slog"
-	"mindseye/pkg/sdk"
 	"strconv"
 	"strings"
 	"time"
+	"wayseer/pkg/sdk"
 )
 
 // parseLogLine reads a slog text line; a line in another shape is an info message dated zero.

@@ -3,13 +3,13 @@ package self
 import (
 	"maps"
 	"math"
-	"mindseye/pkg/sdk"
 	"os"
 	"runtime"
 	"runtime/metrics"
 	"slices"
 	"strconv"
 	"time"
+	"wayseer/pkg/sdk"
 )
 
 // Entity kinds the module adds to the core vocabulary; the app itself is a core process.
