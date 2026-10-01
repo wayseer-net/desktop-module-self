@@ -14,6 +14,7 @@ type ModuleState struct {
 	State sdk.State
 	Err   string // the module's health error; module errors never carry secrets
 	Note  string // a limit the module reports that is not an error
+	Off   bool   // the owner turned it off
 }
 
 // Probe is what the app knows about itself. The app sets its parts; the module reads them.

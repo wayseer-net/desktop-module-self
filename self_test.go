@@ -397,3 +397,13 @@ func TestReportedEventsReachTheWorldOnTheirEntity(t *testing.T) {
 		t.Errorf("QueryEvents = %+v, %v", kept, err)
 	}
 }
+
+func TestAModuleTurnedOffIsOffNotFailing(t *testing.T) {
+	s := ModuleState{Name: "prom", Kind: "prometheus", State: sdk.FreshDisconnected, Off: true}
+	if st := moduleStatus(s); st.Level != sdk.StatusUnknown || st.Reason != "turned off" {
+		t.Errorf("status %+v; want unknown, turned off", st)
+	}
+	if got := freshness(s); got != "off" {
+		t.Errorf("freshness %q; want off", got)
+	}
+}

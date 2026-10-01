@@ -57,7 +57,7 @@ func (m *Module) world() ([]sdk.Entity, []sdk.Edge) {
 		if s.Name.Validate() != nil {
 			continue
 		}
-		attrs := map[string]sdk.Value{"kind": sdk.String(s.Kind), "freshness": sdk.String(s.State.String())}
+		attrs := map[string]sdk.Value{"kind": sdk.String(s.Kind), "freshness": sdk.String(freshness(s))}
 		if s.Note != "" {
 			attrs["note"] = sdk.String(s.Note)
 		}
@@ -75,8 +75,11 @@ func (m *Module) entity(ref sdk.EntityRef, kind sdk.Kind, name string, st sdk.St
 	return sdk.Entity{Ref: ref, Kind: kind, Name: name, Status: st, Attrs: attrs, Source: m.name}
 }
 
-// moduleStatus maps freshness to entity health.
+// moduleStatus maps freshness to entity health; a module turned off is not failing.
 func moduleStatus(s ModuleState) sdk.Status {
+	if s.Off {
+		return sdk.Status{Level: sdk.StatusUnknown, Reason: "turned off"}
+	}
 	switch s.State {
 	case sdk.FreshLive:
 		return sdk.Status{Level: sdk.StatusOK}
@@ -86,6 +89,14 @@ func moduleStatus(s ModuleState) sdk.Status {
 		return sdk.Status{Level: sdk.StatusCrit, Reason: s.Err}
 	}
 	return sdk.Status{Level: sdk.StatusDown, Reason: "disconnected"}
+}
+
+// freshness is s's freshness as its attribute says it, or "off".
+func freshness(s ModuleState) string {
+	if s.Off {
+		return "off"
+	}
+	return s.State.String()
 }
 
 // worldChanges returns the entities that differ from what was sent and records them as sent.
