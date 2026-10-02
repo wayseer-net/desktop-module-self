@@ -75,8 +75,11 @@ func (m *Module) entity(ref sdk.EntityRef, kind sdk.Kind, name string, st sdk.St
 	return sdk.Entity{Ref: ref, Kind: kind, Name: name, Status: st, Attrs: attrs, Source: m.name}
 }
 
-// moduleStatus maps freshness to entity health; a module turned off is not failing.
+// moduleStatus maps freshness to entity health; a module locked or turned off is not failing.
 func moduleStatus(s ModuleState) sdk.Status {
+	if s.Locked {
+		return sdk.Status{Level: sdk.StatusUnknown, Reason: "locked"}
+	}
 	if s.Off {
 		return sdk.Status{Level: sdk.StatusUnknown, Reason: "turned off"}
 	}
@@ -91,8 +94,11 @@ func moduleStatus(s ModuleState) sdk.Status {
 	return sdk.Status{Level: sdk.StatusDown, Reason: "disconnected"}
 }
 
-// freshness is s's freshness as its attribute says it, or "off".
+// freshness is s's freshness as its attribute says it, or "locked" or "off".
 func freshness(s ModuleState) string {
+	if s.Locked {
+		return "locked"
+	}
 	if s.Off {
 		return "off"
 	}

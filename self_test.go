@@ -407,3 +407,15 @@ func TestAModuleTurnedOffIsOffNotFailing(t *testing.T) {
 		t.Errorf("freshness %q; want off", got)
 	}
 }
+
+func TestALockedModuleSaysLockedAndNothingMore(t *testing.T) {
+	for _, off := range []bool{false, true} {
+		s := ModuleState{Name: "k8s", Kind: "kubernetes", State: sdk.FreshDisconnected, Locked: true, Off: off}
+		if st := moduleStatus(s); st.Level != sdk.StatusUnknown || st.Reason != "locked" {
+			t.Errorf("off %v: status %+v; want unknown, locked", off, st)
+		}
+		if got := freshness(s); got != "locked" {
+			t.Errorf("off %v: freshness %q; want locked", off, got)
+		}
+	}
+}
