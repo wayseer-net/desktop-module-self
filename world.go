@@ -9,7 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"time"
-	"wayseer/pkg/sdk"
+
+	"wayseer.dev/sdk"
 )
 
 // Entity kinds the module adds to the core vocabulary; the app itself is a core process.

@@ -3,7 +3,8 @@ package self
 import (
 	"testing"
 	"time"
-	"wayseer/pkg/sdk"
+
+	"wayseer.dev/sdk"
 )
 
 func TestParseLogLine(t *testing.T) {

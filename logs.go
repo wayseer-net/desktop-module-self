@@ -5,7 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"wayseer/pkg/sdk"
+
+	"wayseer.dev/sdk"
 )
 
 // parseLogLine reads a slog text line; a line in another shape is an info message dated zero.

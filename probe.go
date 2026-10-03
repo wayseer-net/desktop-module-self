@@ -4,7 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"wayseer/pkg/sdk"
+
+	"wayseer.dev/sdk"
 )
 
 // ModuleState is one module instance as the app sees it.
