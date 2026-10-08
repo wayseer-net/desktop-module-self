@@ -10,13 +10,16 @@ import (
 
 // ModuleState is one module instance as the app sees it.
 type ModuleState struct {
-	Name   sdk.ModuleID
-	Kind   string
-	State  sdk.State
-	Err    string // the module's health error; module errors never carry secrets
-	Note   string // a limit the module reports that is not an error
-	Off    bool   // the owner turned it off
-	Locked bool   // no licence key unlocks its kind
+	Name    sdk.ModuleID
+	Kind    string
+	State   sdk.State
+	Err     string // the module's health error; module errors never carry secrets
+	Note    string // a limit the module reports that is not an error
+	Off     bool   // the owner turned it off
+	Locked  bool   // no licence key unlocks its kind
+	PID     int    // its own process's pid, or 0 for a module that runs in the app
+	Package string // the installed package it runs, such as wayseer-labs/aircraft, if any
+	Version string // that package's version
 }
 
 // Probe is what the app knows about itself. The app sets its parts; the module reads them.

@@ -19,6 +19,10 @@ const (
 	KindModule sdk.Kind = "wayseer/module"
 )
 
+// AttrLocalPID is a process's pid on this machine, which the localhost module also sets, so an
+// identity rule links each to its process there.
+const AttrLocalPID = "local.pid"
+
 // started approximates when the process started.
 var started = time.Now()
 
@@ -45,6 +49,7 @@ func mustRef(src sdk.ModuleID, kind sdk.Kind, native string) sdk.EntityRef {
 func (m *Module) world() ([]sdk.Entity, []sdk.Edge) {
 	app := m.entity(appRef(m.name), sdk.KindProcess, "Wayseer", sdk.Status{Level: sdk.StatusOK}, map[string]sdk.Value{
 		"pid":        sdk.Number(float64(os.Getpid())),
+		AttrLocalPID: sdk.Number(float64(os.Getpid())),
 		"go_version": sdk.String(runtime.Version()),
 		"version":    sdk.String(version()),
 		"started":    sdk.Time(started),
@@ -61,6 +66,12 @@ func (m *Module) world() ([]sdk.Entity, []sdk.Edge) {
 		attrs := map[string]sdk.Value{"kind": sdk.String(s.Kind), "freshness": sdk.String(freshness(s))}
 		if s.Note != "" {
 			attrs["note"] = sdk.String(s.Note)
+		}
+		if s.Package != "" {
+			attrs["package"], attrs["version"] = sdk.String(s.Package), sdk.String(s.Version)
+		}
+		if s.PID > 0 {
+			attrs[AttrLocalPID] = sdk.Number(float64(s.PID))
 		}
 		ents = append(ents, m.entity(moduleRef(m.name, s.Name), KindModule, string(s.Name), moduleStatus(s), attrs))
 	}

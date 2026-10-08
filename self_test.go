@@ -1,10 +1,12 @@
 package self
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
 	"math"
+	"os"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -417,6 +419,51 @@ func TestALockedModuleSaysLockedAndNothingMore(t *testing.T) {
 		}
 		if got := freshness(s); got != "locked" {
 			t.Errorf("off %v: freshness %q; want locked", off, got)
+		}
+	}
+}
+
+func TestTheAppAndModuleProcessesCarryTheirLocalPID(t *testing.T) {
+	p := NewProbe()
+	p.SetModules(func() []ModuleState {
+		return []ModuleState{{Name: "aircraft", Kind: "external", PID: 4242}, {Name: "prom", Kind: "prometheus"}}
+	})
+	m := New(p)
+	if err := m.Configure(context.Background(), config(t, "wayseer", "")); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := m.Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[sdk.EntityRef]float64{appRef("wayseer"): float64(os.Getpid()), moduleRef("wayseer", "aircraft"): 4242}
+	for _, e := range cs.Upserts {
+		if got, ok := e.Attrs[AttrLocalPID]; ok != (want[e.Ref] != 0) || ok && got.Num() != want[e.Ref] {
+			t.Errorf("%s has %s %v; want %v", e.Ref, AttrLocalPID, got, want[e.Ref])
+		}
+	}
+}
+
+func TestAModuleFromAPackageNamesItAndItsVersion(t *testing.T) {
+	p := NewProbe()
+	p.SetModules(func() []ModuleState {
+		return []ModuleState{{Name: "sky-provo", Kind: "external", Package: "wayseer-labs/aircraft", Version: "0.1.1"}, {Name: "prom", Kind: "prometheus"}}
+	})
+	m := New(p)
+	if err := m.Configure(context.Background(), config(t, "wayseer", "")); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := m.Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range cs.Upserts {
+		if e.Kind != KindModule {
+			continue
+		}
+		got := e.Attrs["package"].Str() + " " + e.Attrs["version"].Str()
+		if want := map[sdk.EntityRef]string{moduleRef("wayseer", "sky-provo"): "wayseer-labs/aircraft 0.1.1"}[e.Ref]; got != cmp.Or(want, " ") {
+			t.Errorf("%s has package and version %q; want %q", e.Ref, got, want)
 		}
 	}
 }
